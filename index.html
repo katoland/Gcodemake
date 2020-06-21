@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Gcode</title>
+    <link rel="stylesheet" href="gcode.css" type="text/css">
+  </head>
+
+  <body>
+    <h1>G-Code Generator for Peelable Printing</h1><br>
+
+    <h2>Basic Settings</h2>
+    Length (mm)
+    <input type="number" value="140" step="0.1" id="p_x"><br>
+    Length of interval between lines (mm)
+    <input type="number" value="0.4" step="0.1" id="p_y"><br>
+    Length of interval between strips (mm)
+    <input type="number" value="0.48" step="0.01" id="intv"><br>
+    Lines per strip
+    <input type="radio" name="lps" id="lps_5" checked>5
+    <input type="radio" name="lps" id="lps_10">10<br>
+    Number of strips
+    <input type="number" value="4" step="1" id="sn"><br>
+
+    <!--
+    p_x, p_y = parameter of x, y
+    sn = number of strips
+    intv = interval
+    lps = line per strip
+  -->
+  　<h2>Print Settings</h2>
+    Speed (mm/min)
+    <input type="number" value="2500" step="100" id="speed"><br>
+    Temperature (C)
+    <input type="number" step="1.0" value="205" id="temp"><br>
+    Heat Bed Temperature (C)
+    <input type="number" step="1.0" value="60" id="hb"><br>
+    Start (X, Y) =
+    (<input type="number" step="1.0" value="50" id="o_x">,
+    <input type="number" step="1.0" value="50" id="o_y">)<br>
+    Z axis
+    <input type="text" value="0.0" id="z"><br>
+    Retract
+    <input type="number" value="0.1" id="r_e"><br>
+
+    <h2>E Command Settings</h2>
+    Filament Diameter (mm)
+    <input type="number" step="0.05" value="1.75" id="fd"><br>
+    Extruder Diameter (mm)
+    <input type="number" step="0.1" value="0.4" id="ed"><br>
+    Multiplier
+    <input type="number" step="0.1" value="1.0" id="mul"><br>
+    Layer Height (mm)
+    <input type="number" step="0.1" value="0.2" id="lh"><br>
+
+    <br><br>
+    <input type="button" class="btn" id="updatebtn" value="PREVIEW"><br>
+    <p class="btn"><a id="download" href="#" download="peelable.gcode" onclick="Download()">GENERATE GCODE</a></p>
+
+    <!--<input type="button" class="btn" id="resetbtn" value="reset">-->
+
+    <br><br>
+    <span id="gcode_fl"></span>
+    <span id="gcode_main"></span>
+    <span id="gcode_ll"></span>
+
+
+    <script type="text/javascript" src="https://ipl.sfc.keio.ac.jp/text/info2-2017-9/lib/jquery-3.2.1.min.js"></script>
+    <script type="text/javascript">
+    var mul = Number($('#mul').val());
+    var content = '';
+
+    //PREVIEW
+    $(function() {
+      $("#updatebtn").click("click", function(){
+        content = [];
+        $("#gcode_fl").empty();
+        firstlines();
+      });
+
+      $("#updatebtn").click("click", function(){
+        $("#gcode_main").empty();
+        strips();
+      });
+
+      $("#updatebtn").click("click", function(){
+        lastlines();
+      });
+    });
+
+    function firstlines(){
+      var array_1 = [];
+      var t = $("#temp").val();
+      var hb = $("#hb").val();
+
+        array_1.push("G90");
+        array_1.push("M83");
+        array_1.push("M106 S255");
+        array_1.push("G4 P500");
+
+        array_1.push("M106 S0");
+        array_1.push("M140 S" + hb);
+        array_1.push("M104 S" + t + " T0");
+        array_1.push("M109 S" + t + " T0");
+
+        array_1.push("G28 ; home all axes");
+        array_1.push("G92 E0 ; zero the extruded length");
+        array_1.push("G1 Z10 ; lower");
+        array_1.push("G1 E20 F200 ; purge nozzle quickly");
+        array_1.push("G1 E27 F60 ; purge nozzle slowly");
+        array_1.push("G92 E0 ; zero the extruded length again");
+        array_1.push("G1 E-1.5 F400 ; retract");
+        array_1.push("G1 X170 Z0.3 F9000 ; pull away filament");
+        array_1.push("G1 X180 F9000 ; wipe");
+        array_1.push("G1 Y20 F9000 ; wipe");
+        array_1.push("G1 E0 ; feed filament back");
+        array_1.push("G92 E0");
+        array_1.push("G1 E-1.5000 F2400");
+        array_1.push("G1 Z0.195 F1000");
+
+      $.each(array_1, function(i, elem) {
+        $('#gcode_fl').append(elem + '<br>');
+        content += elem + '\n';
+      });
+
+      array_1 = [];
+    }
+
+
+    function strips(){
+      var array_2 = [];
+      var p_y = parseFloat($('#p_y').val());
+      var sn = parseFloat($('#sn').val()*20);
+      var intv = parseFloat($('#intv').val());
+      var lps = parseFloat($('#lps').val());   //line per strip
+
+//print settings
+      var s = Number($('#speed').val());
+      var o_x = Number($('#o_x').val());
+      var o_y = Number($('#o_y').val());
+      var z = Number($('#z').val());
+      var r_e = Number($('#r_e').val());
+
+// for E
+      var fd = Number($('#fd').val());
+      var ed = Number($('#ed').val());
+      var mul = Number($('#mul').val());
+      var lh = Number($('#lh').val());
+      var x_e = Number($('#p_x').val());  //x for E
+
+      for (var i = 0; i <= sn; i++) {
+        var x1 = parseFloat($("#p_x").val());
+        var x = (Number(x1) + o_x).toFixed(2);
+
+        var y1 = i * p_y;
+
+        var e = (mul * (x_e * lh * ed) / (Math.PI * (fd / 2.0) * (fd / 2.0))).toFixed(4);
+
+        if ($('input[name=lps]:eq(0)').prop('checked')) {
+          var y = (Number(y1) + ((intv-p_y) * Math.floor(i/5)) + o_y).toFixed(2);
+          if (i%5==0 && i!=0) {
+            array_2.push("G1 X" + o_x + " Y" + y + " Z" + z + " E" + e + " F" + s);
+            array_2.push("G1 X" + x +" Y" + y + " Z" + z + " E-" + r_e + " F" + s);
+          }  else {
+            array_2.push("G1 X" + o_x + " Y" + y + " Z" + z + " E" + e + " F" + s);
+            array_2.push("G1 X" + x +" Y" + y + " Z" + z + " E-" + r_e + " F" + s);
+          }
+        } else if ($('input[name=lps]:eq(1)').prop('checked')) {
+          var y = (Number(y1) + ((intv-p_y) * Math.floor(i/10)) + o_y).toFixed(2);
+          if (i%5==0 && i%2==0 && i!=0) {
+            array_2.push("G1 X" + o_x + " Y" + y + " Z" + z + " E" + e + " F" + s);
+            array_2.push("G1 X" + x +" Y" + y + " Z" + z + " E-" + r_e + " F" + s);
+          } else {
+            array_2.push("G1 X" + o_x + " Y" + y + " Z" + z + " E" + e + " F" + s);
+            array_2.push("G1 X" + x +" Y" + y + " Z" + z + " E-" + r_e + " F" + s);
+          }
+        }
+      }
+
+      $.each(array_2, function(i, elem) {
+        $('#gcode_main').append(elem + '<br>');
+        content += elem + '\n';
+      });
+      array_2 = [];
+    }
+
+    function lastlines(){
+      var array_3 = [
+        "G28 X0 ; home the X-axis",
+        "M104 S0 ; turn off heaters",
+        "M140 S0 ; turn off bed",
+        "M84 ; disable motors"
+      ]
+      $.each(array_3, function(i, elem) {
+        $('#gcode_ll').append(elem + '<br>');
+        content += elem + '\n';
+      });
+    }
+
+
+    //page top button
+    $(function(){
+    var topBtn=$('#pageTop');
+    topBtn.hide();
+
+    $(window).scroll(function(){
+      if ($(this).scrollTop()>300) {
+        topBtn.fadeIn();
+      } else {
+        topBtn.fadeOut();
+      }
+    });
+
+    topBtn.click(function(){
+      $('body,html').animate({
+      scrollTop: 0},500);
+      return false;
+    });
+  });
+
+  function Download() {
+    var blob = new Blob([ content ], { "type" : "text/plain" });
+    if (window.navigator.msSaveBlob) {
+        window.navigator.msSaveBlob(blob, "test.txt");
+      } else {
+        document.getElementById("download").href = window.URL.createObjectURL(blob);
+      }
+    }
+
+  </script>
+
+  <p id="pageTop"><a href="#">TOP</a></p>
+
+</body>
+
+</html>
